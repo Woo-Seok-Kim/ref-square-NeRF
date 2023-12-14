@@ -1,2 +1,2 @@
-# refsquare_nerf
-Project page of ref^2-nerf
+# REF^2-NeRF
+Github page of REF^2-NeRF
