@@ -191,12 +191,12 @@ def create_nerf(args):
     embeddirs_fn, input_ch_views = get_embedder(args.multires_views, args.i_embed)
         
     skips = [4]
-    model = NeRF(D=args.netdepth, W=args.netwidth,
+    model = Ref_square_NeRF(D=args.netdepth, W=args.netwidth,
                  input_ch=input_ch, skips=skips,
                  input_ch_views=input_ch_views).to(device)
     grad_vars = list(model.parameters())
 
-    model_fine = NeRF(D=args.netdepth_fine, W=args.netwidth_fine,
+    model_fine = Ref_square_NeRF(D=args.netdepth_fine, W=args.netwidth_fine,
                         input_ch=input_ch, skips=skips,
                         input_ch_views=input_ch_views).to(device)
     grad_vars += list(model_fine.parameters())
@@ -208,11 +208,11 @@ def create_nerf(args):
     network_query_ms = lambda inputs, network_fn : run_network_ms(inputs, network_fn,
                                                                 netchunk=args.netchunk)
     
-    offset = Offset(D=8, W=args.netwidth, input_ch=input_ch_offset, input_ch_views=input_ch_views,
+    offset = Offset(D=6, W=args.netwidth, input_ch=input_ch_offset, input_ch_views=input_ch_views,
                  skips=skips).to(device)
     grad_vars += list(offset.parameters())
     
-    offset_fine = Offset(D=8, W=args.netwidth, input_ch=input_ch_offset, input_ch_views=input_ch_views,
+    offset_fine = Offset(D=6, W=args.netwidth, input_ch=input_ch_offset, input_ch_views=input_ch_views,
                  skips=skips).to(device)
     grad_vars += list(offset_fine.parameters())
     

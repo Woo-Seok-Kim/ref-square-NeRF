@@ -64,11 +64,11 @@ def get_embedder(multires, i=0):
 
 
 # Model
-class NeRF(nn.Module):
+class Ref_square_NeRF(nn.Module):
     def __init__(self, D=8, W=256, input_ch=3, input_ch_views=3, skips=[4]):
         """ 
         """
-        super(NeRF, self).__init__()
+        super(Ref_square_NeRF, self).__init__()
         self.D = D
         self.W = W
         self.input_ch = input_ch
