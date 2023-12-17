@@ -64,26 +64,30 @@ def get_embedder(multires, i=0):
 
 
 # Model
-class Ref_square_NeRF(nn.Module):
-    def __init__(self, D=8, W=256, input_ch=3, input_ch_views=3, skips=[4]):
+class NeRF(nn.Module):
+    def __init__(self, D=8, W=256, input_ch=3, input_ch_views=3, output_ch=4, skips=[4], use_viewdirs=False):
         """ 
         """
-        super(Ref_square_NeRF, self).__init__()
+        super(NeRF, self).__init__()
         self.D = D
         self.W = W
         self.input_ch = input_ch
         self.input_ch_views = input_ch_views
         self.skips = skips
+        self.use_viewdirs = use_viewdirs
         
         self.pts_linears = nn.ModuleList(
             [nn.Linear(input_ch, W)] + [nn.Linear(W, W) if i not in self.skips else nn.Linear(W + input_ch, W) for i in range(D-1)])
 
         self.views_linears = nn.ModuleList([nn.Linear(input_ch_views + W, W), nn.Linear(W, W // 2)])
         
-        self.feature_linear = nn.Linear(W, W)
-        self.alpha_linear = nn.Linear(W, 1)
-        self.rgb_linear = nn.Linear(W, 3)
-        self.view_dependent = nn.Linear(W // 2, 65)
+        if use_viewdirs:
+            self.feature_linear = nn.Linear(W, W)
+            self.alpha_linear = nn.Linear(W, 1)
+            self.rgb_linear = nn.Linear(W, 3)
+            self.view_dependent = nn.Linear(W // 2, 65)
+        else:
+            self.output_linear = nn.Linear(W, output_ch)
 
     def forward(self, x):
         input_pts, input_views = torch.split(x, [self.input_ch, self.input_ch_views], dim=-1)
@@ -94,19 +98,52 @@ class Ref_square_NeRF(nn.Module):
             if i in self.skips:
                 h = torch.cat([input_pts, h], -1)
 
-        alpha = self.alpha_linear(h)
-        feature = self.feature_linear(h)
-        rgb = self.rgb_linear(h)        
-        h = torch.cat([feature, input_views], -1)
-        for i, l in enumerate(self.views_linears):
-            h = self.views_linears[i](h)
-            h = F.relu(h)
+        if self.use_viewdirs:
+            alpha = self.alpha_linear(h)
+            rgb = self.rgb_linear(h)        
+            feature = self.feature_linear(h)
+            h = torch.cat([feature, input_views], -1)
+            for i, l in enumerate(self.views_linears):
+                h = self.views_linears[i](h)
+                h = F.relu(h)
 
-        #rgb = self.rgb_linear(h)        
-        view_dependent = self.view_dependent(h)
-        outputs = torch.cat([rgb, alpha, view_dependent], -1)
+            #rgb = self.rgb_linear(h)        
+            view_dependent = self.view_dependent(h)
+            outputs = torch.cat([rgb, alpha, view_dependent], -1)
+        else:
+            outputs = self.output_linear(h)
 
         return outputs    
+
+    def load_weights_from_keras(self, weights):
+        assert self.use_viewdirs, "Not implemented if use_viewdirs=False"
+        
+        # Load pts_linears
+        for i in range(self.D):
+            idx_pts_linears = 2 * i
+            self.pts_linears[i].weight.data = torch.from_numpy(np.transpose(weights[idx_pts_linears]))    
+            self.pts_linears[i].bias.data = torch.from_numpy(np.transpose(weights[idx_pts_linears+1]))
+        
+        # Load feature_linear
+        idx_feature_linear = 2 * self.D
+        self.feature_linear.weight.data = torch.from_numpy(np.transpose(weights[idx_feature_linear]))
+        self.feature_linear.bias.data = torch.from_numpy(np.transpose(weights[idx_feature_linear+1]))
+
+        # Load views_linears
+        idx_views_linears = 2 * self.D + 2
+        self.views_linears[0].weight.data = torch.from_numpy(np.transpose(weights[idx_views_linears]))
+        self.views_linears[0].bias.data = torch.from_numpy(np.transpose(weights[idx_views_linears+1]))
+
+        # Load rgb_linear
+        idx_rbg_linear = 2 * self.D + 4
+        self.rgb_linear.weight.data = torch.from_numpy(np.transpose(weights[idx_rbg_linear]))
+        self.rgb_linear.bias.data = torch.from_numpy(np.transpose(weights[idx_rbg_linear+1]))
+
+        # Load alpha_linear
+        idx_alpha_linear = 2 * self.D + 6
+        self.alpha_linear.weight.data = torch.from_numpy(np.transpose(weights[idx_alpha_linear]))
+        self.alpha_linear.bias.data = torch.from_numpy(np.transpose(weights[idx_alpha_linear+1]))
+
 
 
 # Ray helpers
@@ -153,7 +190,7 @@ def ndc_rays(H, W, focal, near, rays_o, rays_d):
 
 
 # Hierarchical sampling (section 5.2)
-def sample_pdf(bins, weights, N_samples, det=False):
+def sample_pdf(bins, weights, N_samples, det=False, pytest=False):
     # Get pdf
     weights = weights + 1e-5 # prevent nans
     pdf = weights / torch.sum(weights, -1, keepdim=True)
@@ -167,6 +204,17 @@ def sample_pdf(bins, weights, N_samples, det=False):
     else:
         u = torch.rand(list(cdf.shape[:-1]) + [N_samples])
 
+    # Pytest, overwrite u with numpy's fixed random numbers
+    if pytest:
+        np.random.seed(0)
+        new_shape = list(cdf.shape[:-1]) + [N_samples]
+        if det:
+            u = np.linspace(0., 1., N_samples)
+            u = np.broadcast_to(u, new_shape)
+        else:
+            u = np.random.rand(*new_shape)
+        u = torch.Tensor(u)
+
     # Invert CDF
     u = u.contiguous()
     inds = torch.searchsorted(cdf, u, right=True)
@@ -174,6 +222,8 @@ def sample_pdf(bins, weights, N_samples, det=False):
     above = torch.min((cdf.shape[-1]-1) * torch.ones_like(inds), inds)
     inds_g = torch.stack([below, above], -1)  # (batch, N_samples, 2)
 
+    # cdf_g = tf.gather(cdf, inds_g, axis=-1, batch_dims=len(inds_g.shape)-2)
+    # bins_g = tf.gather(bins, inds_g, axis=-1, batch_dims=len(inds_g.shape)-2)
     matched_shape = [inds_g.shape[0], inds_g.shape[1], cdf.shape[-1]]
     cdf_g = torch.gather(cdf.unsqueeze(1).expand(matched_shape), 2, inds_g)
     bins_g = torch.gather(bins.unsqueeze(1).expand(matched_shape), 2, inds_g)
@@ -186,7 +236,7 @@ def sample_pdf(bins, weights, N_samples, det=False):
     return samples
 
 class Offset(nn.Module):
-    def __init__(self, D=6, W=256, input_ch=3, input_ch_views=3, skips=[4]):
+    def __init__(self, D=6, W=256, input_ch=3, input_ch_views=3, output_ch=3, skips=[4], use_viewdirs=True):
         """ 
         """
         super(Offset, self).__init__()
@@ -195,14 +245,19 @@ class Offset(nn.Module):
         self.input_ch = input_ch
         self.input_ch_views = input_ch_views
         self.skips = skips
+        self.use_viewdirs = use_viewdirs
         
         self.pts_linears = nn.ModuleList(
             [nn.Linear(input_ch, W)] + [nn.Linear(W, W) if i not in self.skips else nn.Linear(W + input_ch, W) for i in range(D-1)])
         self.views_linears = nn.ModuleList(
-            [nn.Linear(W // 2 + input_ch_views, W)] + [nn.Linear(W, W // 2)])
-        self.feature_linear = nn.Linear(W, W // 2)
-        self.density_linear = nn.Linear(W // 2, 1)
-        self.xyz_linear = nn.Linear(W // 2, 3)
+            [nn.Linear(W + input_ch_views, W)] + [nn.Linear(W, W // 2)])
+        #self.views_linears = nn.ModuleList([nn.Linear(input_ch_views + W, W)] + [nn.Linear(W, W), nn.Linear(W, W // 2)])
+        if use_viewdirs:
+            self.feature_linear = nn.Linear(W, W)
+            self.density_linear = nn.Linear(W, 1)
+            self.xyz_linear = nn.Linear(W // 2, 3)
+        else:
+            self.output_linear = nn.Linear(W, output_ch)
 
     def forward(self, x):
         input_pts, input_views = torch.split(x, [self.input_ch, self.input_ch_views], dim=-1)
@@ -213,8 +268,8 @@ class Offset(nn.Module):
             if i in self.skips:
                 h = torch.cat([input_pts, h], -1)
 
+        density = self.density_linear(h)
         feature = self.feature_linear(h)
-        density = self.density_linear(torch.relu(feature))
 
         h = torch.cat([input_views, feature], -1)
         for i, l in enumerate(self.views_linears):
@@ -239,6 +294,7 @@ class Decoder(nn.Module):
         self.rgb_linear = nn.Linear(W, 3, bias=True)
 
     def forward(self, x):
+        #input_pts, input_views = torch.split(x, [self.input_ch, self.input_ch_views], dim=-1)
         h = x
         for i, l in enumerate(self.linears):
             h = self.linears[i](h)
@@ -267,3 +323,59 @@ class Gate(nn.Module):
         weight = self.weight_linear(h)
         return weight
 
+
+class Feature_MLP(nn.Module):
+    def __init__(self, D=2, W=24):
+        """ 
+        """
+        super(Feature_MLP, self).__init__()
+        self.D = D
+        self.W = W
+        
+        self.linears_rgb = nn.ModuleList(
+            [nn.Linear(64, W)] + [nn.Linear(W, W) for i in range(D-1)])
+        self.linears_alpha = nn.ModuleList(
+            [nn.Linear(64, W)] + [nn.Linear(W, W) for i in range(D-1)])
+        self.rgb_linear = nn.Linear(W, 3, bias=True)
+        self.weight_linear = nn.Linear(W, 1, bias=True)
+
+    def forward(self, x):
+        #input_pts, input_views = torch.split(x, [self.input_ch, self.input_ch_views], dim=-1)
+        h = x
+        for i, l in enumerate(self.linears_rgb):
+            h = self.linears_rgb[i](h)
+            h = F.relu(h)
+            
+        rgb = torch.sigmoid(self.rgb_linear(h))
+        
+        h_alpha = x
+        for i, l in enumerate(self.linears_alpha):
+            h_alpha = self.linears_alpha[i](h_alpha)
+            h = F.relu(h_alpha)
+        
+        weight = torch.relu(self.weight_linear(h))
+        output = torch.cat([rgb, weight], -1)
+        return output
+
+
+class Pose(nn.Module):
+    def __init__(self, D=2, W=24):
+        """ 
+        """
+        super(Pose, self).__init__()
+        self.D = D
+        self.W = W
+        
+        self.linears = nn.ModuleList(
+            [nn.Linear(3, W)] + [nn.Linear(W, W) for i in range(D-1)])
+        self.rgb_linear = nn.Linear(W, 3)
+
+    def forward(self, x):
+        #input_pts, input_views = torch.split(x, [self.input_ch, self.input_ch_views], dim=-1)
+        h = x
+        for i, l in enumerate(self.linears):
+            h = self.linears[i](h)
+            h = F.relu(h)
+            
+        rgb = self.rgb_linear(h)
+        return rgb
