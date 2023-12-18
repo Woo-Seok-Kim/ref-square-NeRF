@@ -823,7 +823,7 @@ def train():
 
     
         if i%args.i_print==0:
-            tqdm.write(f"[TRAIN] Iter: {i} Loss: {loss.item()}  PSNR: {psnr.item()} PSNR_VI: {psnr_vi.item()} offset_raw: {loss_offset_raw.item()} offset_rawSUM: {loss_offset.item()}")# Weight: {loss_weight.item()}")
+            tqdm.write(f"[TRAIN] Iter: {i} Loss: {loss.item()}  PSNR: {psnr.item()} PSNR_VI: {psnr_vi.item()} loss_offset_raw: {loss_offset_raw.item()}")
 
         global_step += 1
 
