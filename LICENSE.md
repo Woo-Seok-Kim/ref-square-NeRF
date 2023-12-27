@@ -42,7 +42,7 @@ In consideration of these premises, and the mutual promises and conditions in th
 (f)　　	UT & NTT shall not be liable to the User or to any third party for any delay or failure to perform UT & NTT’s obligation set forth under this Agreement due to any cause beyond UT & NTT’s reasonable control.
 
 EXHIBIT A
-	OSS List
-  No./License/OSS
-  1/MIT License/nerf-pytorch(https://github.com/yenchenlin/nerf-pytorch)
+OSS List
+No./License/OSS
+1/MIT License/nerf-pytorch(https://github.com/yenchenlin/nerf-pytorch)
 
