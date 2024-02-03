@@ -380,7 +380,7 @@ def render_rays(ray_batch,
     weights_pts, feature_maps = raw2features(raw_vd, z_vals, rays_d)
     decode = network_query_ms(feature_maps, decoder)
     weights_sum = torch.sum(weights_pts, dim=1) 
-    weights = torch.sigmoid(network_query_ms(feature_maps, gate)) * weights_sum[...,None]
+    weights = torch.relu(network_query_ms(feature_maps, gate))
     rgb_0 = rgb_map_vi + (decode * weights)
 
 
@@ -409,7 +409,7 @@ def render_rays(ray_batch,
     weights_pts, feature_maps = raw2features(raw_vd, z_vals, rays_d)
     decode = network_query_ms(feature_maps, decoder)
     weights_sum = torch.sum(weights_pts, dim=1)
-    weights = torch.sigmoid(network_query_ms(feature_maps, gate)) * weights_sum[...,None]
+    weights = torch.relu(network_query_ms(feature_maps, gate))
     rgb_map_vd = decode * weights
     rgb_map = rgb_map_vi + rgb_map_vd
 
