@@ -1,3 +1,5 @@
+# [Project  Page](https://woo-seok-kim.github.io/ref_square_nerf/)
+
 # REF^2-NeRF
 Github page of REF^2-NeRF.
 
