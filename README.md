@@ -5,7 +5,8 @@ This code is heavily borrowed from [NeRF-pytorch](https://github.com/yenchenlin/
 
 # How to use
 
-Basically, same as NeRF-pytorch.
+Basically, same as NeRF-pytorch(installation, etc).
+
 Please set N_importance_{vi, vd, glass} of config file for hierarchical sampling.
 
 ```
