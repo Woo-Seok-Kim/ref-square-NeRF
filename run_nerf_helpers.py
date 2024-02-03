@@ -212,9 +212,9 @@ class Offset(nn.Module):
         self.pts_linears = nn.ModuleList(
             [nn.Linear(input_ch, W)] + [nn.Linear(W, W) if i not in self.skips else nn.Linear(W + input_ch, W) for i in range(D-1)])
         self.views_linears = nn.ModuleList(
-            [nn.Linear(W + input_ch_views, W)] + [nn.Linear(W, W // 2)])
-        self.feature_linear = nn.Linear(W, W)
-        self.density_linear = nn.Linear(W, 1)
+            [nn.Linear(W // 2 + input_ch_views, W)] + [nn.Linear(W, W // 2)])
+        self.feature_linear = nn.Linear(W, W // 2)
+        self.density_linear = nn.Linear(W // 2, 1)
         self.xyz_linear = nn.Linear(W // 2, 3)
 
     def forward(self, x):
@@ -226,8 +226,8 @@ class Offset(nn.Module):
             if i in self.skips:
                 h = torch.cat([input_pts, h], -1)
 
-        density = self.density_linear(h)
         feature = self.feature_linear(h)
+        density = self.density_linear(torch.relu(feature))
 
         h = torch.cat([input_views, feature], -1)
         for i, l in enumerate(self.views_linears):
