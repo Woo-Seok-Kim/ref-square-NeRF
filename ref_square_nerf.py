@@ -242,6 +242,7 @@ def create_nerf(args):
         'offset_fine' : offset_fine,
         'decoder' : decoder,
         'gate' : gate,
+        'feature_dim' : args.feature_dim,
     }
 
     # NDC only good for LLFF-style forward facing data
@@ -342,7 +343,9 @@ def render_rays(ray_batch,
                 offset=None,
                 offset_fine=None,
                 decoder=None,
-                gate=None,):
+                gate=None,
+                feature_dim=None,
+                ):
     N_rays = ray_batch.shape[0]
     rays_o, rays_d = ray_batch[:,0:3], ray_batch[:,3:6] # [N_rays, 3] each
     viewdirs = ray_batch[:,-3:] if ray_batch.shape[-1] > 8 else None
@@ -376,7 +379,7 @@ def render_rays(ray_batch,
 
 #     raw = run_network(pts)
     raw = network_query_fn(pts_added, viewdirs, network_fn)
-    raw_nerf, raw_vd = torch.split(raw, [4,65], dim=2)
+    raw_nerf, raw_vd = torch.split(raw, [4,1+feature_dim], dim=2)
     rgb_map_vi, disp_map, acc_map, weights_vi, depth_map = raw2outputs(raw_nerf, z_vals, rays_d, raw_noise_std, white_bkgd)
     weights_pts, feature_maps = raw2features(raw_vd, z_vals, rays_d)
     decode = network_query_ms(feature_maps, decoder)
@@ -403,7 +406,7 @@ def render_rays(ray_batch,
     pts_added = pts + offset
 
     raw = network_query_fn(pts_added, viewdirs, network_fine)
-    raw_nerf, raw_vd = torch.split(raw, [4,65], dim=2)
+    raw_nerf, raw_vd = torch.split(raw, [4,1+feature_dim], dim=2)
 
     rgb_map_vi, disp_map, acc_map, weights_vi, depth_map = raw2outputs(raw_nerf, z_vals, rays_d, raw_noise_std, white_bkgd)
     
@@ -449,6 +452,8 @@ def config_parser():
                         help='layers in fine network')
     parser.add_argument("--netwidth_fine", type=int, default=256, 
                         help='channels per layer in fine network')
+    parser.add_argument("--feature_dim", type=int, default=64, 
+                        help='view-dependent feature vector dimension')
     parser.add_argument("--N_rand", type=int, default=32*32*4, 
                         help='batch size (number of random rays per gradient step)')
     parser.add_argument("--lrate", type=float, default=5e-4, 
@@ -615,7 +620,7 @@ def train():
                 # render_test switches to test poses
                 images = images[i_test]
             else:
-                # Default is smoother render_poses path
+                # Default is smoother render_poses path 
                 images = None
 
             testsavedir = os.path.join(basedir, expname, 'renderonly_{}_{:06d}'.format('test' if args.render_test else 'path', start))
