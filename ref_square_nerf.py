@@ -162,12 +162,12 @@ def create_nerf(args):
     skips = [4]
     model = Ref_square_NeRF(D=args.netdepth, W=args.netwidth,
                  input_ch=input_ch, skips=skips,
-                 input_ch_views=input_ch_views).to(device)
+                 input_ch_views=input_ch_views, feature_dim=args.feature_dim).to(device)
     grad_vars = list(model.parameters())
 
     model_fine = Ref_square_NeRF(D=args.netdepth_fine, W=args.netwidth_fine,
                         input_ch=input_ch, skips=skips,
-                        input_ch_views=input_ch_views).to(device)
+                        input_ch_views=input_ch_views, feature_dim=args.feature_dim).to(device)
     grad_vars += list(model_fine.parameters())
 
     network_query_fn = lambda inputs, viewdirs, network_fn : run_network(inputs, viewdirs, network_fn,

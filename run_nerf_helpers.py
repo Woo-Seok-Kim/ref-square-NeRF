@@ -65,7 +65,7 @@ def get_embedder(multires, i=0):
 
 # Model
 class Ref_square_NeRF(nn.Module):
-    def __init__(self, D=8, W=256, input_ch=3, input_ch_views=3, output_ch=4, skips=[4]):
+    def __init__(self, D=8, W=256, input_ch=3, input_ch_views=3, output_ch=4, skips=[4], feature_dim=64):
         """ 
         """
         super(Ref_square_NeRF, self).__init__()
@@ -83,7 +83,7 @@ class Ref_square_NeRF(nn.Module):
         self.feature_linear = nn.Linear(W, W)
         self.alpha_linear = nn.Linear(W, 1)
         self.rgb_linear = nn.Linear(W, 3)
-        self.view_dependent = nn.Linear(W // 2, 65)
+        self.view_dependent = nn.Linear(W // 2, 1 + feature_dim)
 
     def forward(self, x):
         input_pts, input_views = torch.split(x, [self.input_ch, self.input_ch_views], dim=-1)
